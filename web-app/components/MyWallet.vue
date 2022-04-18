@@ -68,6 +68,7 @@
 <script>
 import Web3 from 'web3';
 import json from '../json/contracts.json';
+import { ethers } from "ethers";
 
 export default {
   name: 'MyWallet',
@@ -84,7 +85,7 @@ export default {
       pinata_secret_api_key: '',
       blockchain_network: 'http://127.0.0.1:8545/',
       abiJSON: json,
-       items: [
+      items: [
        
       ]
     }
@@ -106,6 +107,25 @@ export default {
             console.log(imgUrl);
         
             try{
+              var provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+              var signer = provider.getSigner();
+              var contract = new ethers.Contract(
+                this.contractAddress,
+                this.abiJSON,
+                signer
+              );
+
+              new contract.update(this.currentTokenIds, imgUrl)
+                .then(async (res) => {
+                let tx = await res.wait();
+                console.log("Transaction: ", tx);
+                this.getAllToken();
+                })
+                .catch((err) => {
+                  console.log(err);
+                  this.statusMsg = err.message;
+                });
+                /** 
                 var web3 = new Web3(new Web3.providers.HttpProvider(this.blockchain_network));
 
                   //contract instance
@@ -115,10 +135,11 @@ export default {
                   console.log("Transaction: ", tx); 
                   this.getAllToken();
                 });
+                **/
               }
               catch (err){
                 console.log(err.message); 
-                $statusMsg = err.message;
+                this.statusMsg = err.message;
               }
       }, 
 
@@ -137,6 +158,46 @@ export default {
 
       getTokenId(currentId, lastId){
         console.log(currentId); 
+
+         var provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+          var signer = provider.getSigner();
+          var contract = new ethers.Contract(
+            this.contractAddress,
+            this.abiJSON,
+            signer
+          );
+
+         new contract.exists(currentId)
+            .then(async (isExists) => {
+                  console.log(currentId+" isExists? "+isExists); 
+
+                  if (isExists){
+                    new contract.tokenURI (currentId).then(async (tokenURI) => { 
+                        console.log(currentId+" tokenURI: "+tokenURI); 
+                        try{
+                          this.AddItem(tokenURI, currentId);
+                        }
+                        catch(err){
+                            console.log(err);
+                        }
+                        if (currentId < lastId){
+                          this.getTokenId(currentId+=1, lastId);
+                        }
+                    });
+
+                  }else{
+                    if (currentId < lastId){
+                      this.getTokenId(currentId+=1, lastId);
+                    }
+                  }
+            })
+            .catch((err) => {
+              console.log(err);
+              this.statusMsg = err.message;
+            });
+
+
+        /** 
          var web3 = new Web3(new Web3.providers.HttpProvider(this.blockchain_network));
 
           //contract instance
@@ -165,10 +226,36 @@ export default {
             }
 
         });
+        **/
+
       },
       getAllToken(){
         this.$refs.uploadForm.style.display = "block";
         this.$refs.editForm.style.display = "none";
+
+         var provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+          var signer = provider.getSigner();
+          var contract = new ethers.Contract(
+            this.contractAddress,
+            this.abiJSON,
+            signer
+          );
+
+          new contract.lastIndex()
+            .then(async (lastId) => {
+                console.log("lastIndex: ", lastId); 
+                this.deleteAll();
+                
+                this.getTokenId(0, lastId);
+            })
+            .catch((err) => {
+              console.log(err);
+              this.statusMsg = err.message;
+            });
+
+
+
+         /** 
          var web3 = new Web3(new Web3.providers.HttpProvider(this.blockchain_network));
 
           //contract instance
@@ -181,19 +268,38 @@ export default {
             this.getTokenId(0, lastId);
 
         });
+        **/
       },
         async connectMetamask(){
         if (typeof window !== "undefined" && typeof window.ethereum !== "undefined" ){
             try{
+
+              //var provider = new ethers.providers.JsonRpcProvider(this.blockchain_network);
+               const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+                // Prompt user for account connections
+                await provider.send("eth_requestAccounts", []);
+                const signer = provider.getSigner();
+                console.log("Account:", await signer.getAddress());
+                this.myAccAddress=await signer.getAddress();
+                this.statusMsg = "My Account: "+this.myAccAddress;
+                this.$refs.uploadForm.style.display = "block";
+                //this.getAllToken();
+               // var balance = await provider.getBalance("ethers.eth");
+               // console.log("Balance: "+balance);
+
+
+
+              /** 
               this.myAccAddress=await window.ethereum.request({method: "eth_requestAccounts"});
               window.ethereum.enable();
               this.statusMsg = "My Account: "+this.myAccAddress;
               this.$refs.uploadForm.style.display = "block";
                this.getAllToken();
+               **/
             }
             catch (err){
               console.log(err.message); 
-              $statusMsg = err.message;
+              this.statusMsg = err.message;
             }
         }else{
           console.log("Please install metamask");
@@ -201,6 +307,26 @@ export default {
         }
       }, 
       removeItem(tokenId){
+        var provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+          var signer = provider.getSigner();
+          var contract = new ethers.Contract(
+            this.contractAddress,
+            this.abiJSON,
+            signer
+          );
+
+          new contract.remove(tokenId)
+            .then(async (tx) => {
+                console.log("Transaction: ", tx); 
+                this.getAllToken();
+            })
+            .catch((err) => {
+              console.log(err);
+              this.statusMsg = err.message;
+            });
+          
+
+        /** 
        var web3 = new Web3(new Web3.providers.HttpProvider(this.blockchain_network));
 
           //contract instance
@@ -213,6 +339,7 @@ export default {
               //handle error here
               console.log(error);
           });
+          **/
       },
       async commitToWallet (ipfshash) {
             var imgUrl="https://gateway.pinata.cloud/ipfs/"+ipfshash;
@@ -220,6 +347,27 @@ export default {
         
             try{
              
+              var provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+              var signer = provider.getSigner();
+              var contract = new ethers.Contract(
+                this.contractAddress,
+                this.abiJSON,
+                signer
+              );
+
+              new contract.add(imgUrl)
+                .then(async (res) => {
+                let tx = await res.wait();
+                console.log("Transaction: ", tx);
+                this.getAllToken();
+                })
+                .catch((err) => {
+                  console.log(err);
+                  this.statusMsg = err.message;
+                });
+
+             
+              /**
                  var web3 = new Web3(new Web3.providers.HttpProvider(this.blockchain_network));
 
                   //contract instance
@@ -229,6 +377,7 @@ export default {
                   console.log("Transaction: ", tx); 
                   this.getAllToken();
                 });
+                **/
               }
               catch (err){
                 console.log(err.message); 
