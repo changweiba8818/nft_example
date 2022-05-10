@@ -190,19 +190,17 @@ contract NFTBox is ERC721URIStorage {
 
         require(slotId < BatchSlotList[batchId].slot.length, 'No Found');
 
+        require(isViewable(batchId, slotId), 'No Found');
 
-        if (isViewable(batchId, slotId)){ 
-            if (slotId < BatchSlotList[batchId].slot.length){
-                if (BatchSlotList[batchId].slot[slotId].itemState == STATE_MASK){
-                    uint randomItemId = uint(keccak256(abi.encodePacked(slotId, block.number-1))) % BatchList[batchId].total_slot;
-                    
-                    BatchSlotList[batchId].slot[slotId].itemId = randomItemId;
-                    BatchSlotList[batchId].slot[slotId].itemState = STATE_UNMASK;
-                }
-
-                return BatchSlotList[batchId].slot[slotId].itemId;
-            }
+        if (BatchSlotList[batchId].slot[slotId].itemState == STATE_MASK){
+            uint randomItemId = uint(keccak256(abi.encodePacked(slotId, block.number-1))) % BatchList[batchId].total_slot;
+            
+            BatchSlotList[batchId].slot[slotId].itemId = randomItemId;
+            BatchSlotList[batchId].slot[slotId].itemState = STATE_UNMASK;
         }
+
+        return BatchSlotList[batchId].slot[slotId].itemId;
+          
 
     }
 
