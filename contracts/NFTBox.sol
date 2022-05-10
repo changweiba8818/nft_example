@@ -7,15 +7,15 @@ import "hardhat/console.sol";
 
 contract NFTBox is ERC721URIStorage {
     using Counters for Counters.Counter;
-    Counters.Counter private _collectionIds;
+    Counters.Counter private _batchIds;
 
-    //Collection - eg: 7 Batch of Collection
-    struct CollectionBox{
+    //Batch - eg: 7 Batch
+    struct Batch{
         string name;
         string desc;
         string thumb_img;
-        uint256 total_item;
-        string content_json;
+        uint256 total_slot;
+        string content_json;//list of images in json array
         uint create_time;//timestamp
         uint start_time;//timestamp
         uint campaign_days;//in days
@@ -25,25 +25,27 @@ contract NFTBox is ERC721URIStorage {
     }
 
 
-    //Each collection has it own array of CollectionItem - eg each collection has 1,111 items
-    struct CollectionItem{ 
+    //Each Batch has it own array of Slot - eg each batch has 1,111 slot
+    struct Slot{ 
         uint purchase_time;       
-        string img_url;    
         address owner;  
-        uint256 itemId;
+        uint itemId;
+        int itemState;
     }
 
-    struct CollectionBoxList{
-         CollectionItem[] items;
+    int constant STATE_MASK = 0;
+    int constant STATE_UNMASK = 1;
+
+    struct SlotList{
+         Slot[] slot;
     }
 
 
 
     //Buyer History/Purchased Token
     struct MyItem{
-        uint256 collectionId;
-        uint256 itemsId;
-        string img_url;
+        uint256 batchId;
+        uint256 slotId;
         uint purchase_time;
     }
 
@@ -51,12 +53,12 @@ contract NFTBox is ERC721URIStorage {
         MyItem[] myItems;
     }
 
-    //Both Collection Array > uint > _collectionIds.increment
-    mapping(uint => CollectionBox) CollectionList;
-    mapping(uint => CollectionBoxList) CollectionItemList;
+    //Both Array > uint > _batchIds.increment
+    mapping(uint => Batch) BatchList;
+    mapping(uint => SlotList) BatchSlotList;
 
 
-    //Purchaser Purchased Items
+    //Purchaser Purchased Slot
     mapping(address => MyBox) MyHistory;
 
     
@@ -64,87 +66,57 @@ contract NFTBox is ERC721URIStorage {
     
     }
 
-    function addCollection(string memory name, string memory desc, string memory thumb_img, uint256 total_item,  
+    /**
+        AddBatch was to create batch with the list of metadata content (list of Token), 
+        with define total slot for each batch by user
+    */
+
+
+    function addBatch(string memory name, string memory desc, string memory thumb_img, uint256 total_slot,  
         string memory content_json,  uint campaign_days, uint price, bool isPublish) public returns (uint256) {
        
-        _collectionIds.increment();
+        _batchIds.increment();
 
-        uint256 newCollectionId = _collectionIds.current();
+        uint256 newBatchId = _batchIds.current();
 
-        CollectionList[newCollectionId] = CollectionBox(name, desc, thumb_img, total_item, content_json, 
+        BatchList[newBatchId] = Batch(name, desc, thumb_img, total_slot, content_json, 
             block.timestamp, block.timestamp, campaign_days, price, isPublish, msg.sender);
 
-        return newCollectionId;
+        return newBatchId;
     }
 
 
-    function publish(uint256 collectionId, uint campaign_days, bool isPublish) public {
-        CollectionList[collectionId].campaign_days = campaign_days;
-        CollectionList[collectionId].isPublish = isPublish;
-    }
-
-
-    function updateCollectionTotalItems(uint256 collectionId, uint total_item) public {
-        CollectionList[collectionId].total_item = total_item;
-    }
-
-
-    function getCollection(uint256 collectionId ) public view returns (CollectionBox memory) {
-        return CollectionList[collectionId];
+    function publish(uint256 batchId, uint campaign_days, bool isPublish) public {
+        BatchList[batchId].campaign_days = campaign_days;
+        BatchList[batchId].isPublish = isPublish;
     }
 
 
 
-    function getTotalCollections() public view returns (uint256) {
-        return _collectionIds.current();
+
+    function getBatch(uint256 batchId ) public view returns (Batch memory) {
+        return BatchList[batchId];
     }
 
 
 
-    function getTest(uint256 collectionId) public payable returns (CollectionItem memory){ 
-        uint currentId=CollectionItemList[collectionId].items.length;
-        uint randomId = uint(keccak256(abi.encodePacked(currentId, block.number-1))) % CollectionList[collectionId].total_item;
-        CollectionItemList[collectionId].items.push(
-            CollectionItem(block.timestamp, "img_url", msg.sender, randomId)
-        );
-        uint lastid = CollectionItemList[collectionId].items.length - 1;
-
-        MyHistory[msg.sender].myItems.push(
-            MyItem(collectionId, lastid, "img_url", block.timestamp)
-        );
-        return CollectionItemList[collectionId].items[lastid];
-    }
-
-    function addCollectionItem(uint256 collectionId, string memory img_url) public {  
-         uint currentId=CollectionItemList[collectionId].items.length; 
-         uint256 randomId = uint256(keccak256(abi.encodePacked(currentId, block.number-1))) % CollectionList[collectionId].total_item;
-
-
-        CollectionItemList[collectionId].items.push(
-               CollectionItem(block.timestamp, "img_url", msg.sender, randomId)
-        );
-        uint lastId = CollectionItemList[collectionId].items.length - 1;
-        addMyHistory(collectionId, lastId, img_url);
-        
-    }
-
-
-    function getCurrentCollectionItemIndex(uint256 collectionId) public view returns (uint256) {  
-        return  CollectionItemList[collectionId].items.length;
+    function getTotalBatch() public view returns (uint256) {
+        return _batchIds.current();
     }
 
 
 
-    function addMyHistory(uint256 collectionId, uint256 itemId, string memory img_url) internal {
-        MyHistory[msg.sender].myItems.push(
-            MyItem(collectionId, itemId, img_url, block.timestamp)
-        );
 
+
+
+    function getCurrentBatchSlotIndex(uint256 batchId) public view returns (uint256) {  
+        return  BatchSlotList[batchId].slot.length;
     }
 
-    function getMyHistory() public view returns (MyBox memory){
-        return MyHistory[msg.sender];
-    }
+
+
+
+    
 
 
 
@@ -160,22 +132,98 @@ contract NFTBox is ERC721URIStorage {
    
 
 
-    function isViewable(uint256 collectionId, uint itemId) public view returns (bool){
+   
+
+
+
+    /**
+        When user buy, it actually was to book a slot in the batch 
+        be4 they can actually know what will they get
+
+        each slot with state still masked
+    */
+
+    function buy(uint256 batchId) public payable {
+        uint price = BatchList[batchId].price;
+
+        require(price > 0, 'This token is not for sale');
+
+        require(BatchList[batchId].isPublish, 'This Batch was not publish');
+
+        uint256 close_time= addDays(BatchList[batchId].start_time, BatchList[batchId].campaign_days);
+        require(block.timestamp < close_time, 'This Campaign Was Closed');
+
+
+        require(BatchSlotList[batchId].slot.length < BatchList[batchId].total_slot, 
+            'This Batch Was Totally Sold Out');
+
+        address seller =  BatchList[batchId].owner;
+        payable(seller).transfer(price); // send the ETH to the seller
+
+        //reserve a slot in the batch for buyer
+        bookSlot(batchId);
+
+        
+    }
+
+    /**
+        each booked slot with state still masked
+    */
+
+    function bookSlot(uint256 batchId) internal {  
+        BatchSlotList[batchId].slot.push(
+               Slot(block.timestamp, msg.sender, 0, STATE_MASK) //itemId = -1 mean still unknown which item they will get
+        );
+        uint slotId = BatchSlotList[batchId].slot.length - 1;
+        addMyHistory(batchId, slotId);
+        
+    }
+
+
+
+     /**
+        when retrieving Item, it will check isViewable, 
+        if yes then only will random pick the item to booked slot, and unmask the state
+    */
+
+    function getItemId(uint256 batchId, uint slotId) public payable returns (uint){
+
+        require(slotId < BatchSlotList[batchId].slot.length, 'No Found');
+
+
+        if (isViewable(batchId, slotId)){ 
+            if (slotId < BatchSlotList[batchId].slot.length){
+                if (BatchSlotList[batchId].slot[slotId].itemState == STATE_MASK){
+                    uint randomItemId = uint(keccak256(abi.encodePacked(slotId, block.number-1))) % BatchList[batchId].total_slot;
+                    
+                    BatchSlotList[batchId].slot[slotId].itemId = randomItemId;
+                    BatchSlotList[batchId].slot[slotId].itemState = STATE_UNMASK;
+                }
+
+                return BatchSlotList[batchId].slot[slotId].itemId;
+            }
+        }
+
+    }
+
+
+
+    function isViewable(uint256 batchId, uint slotId) internal view returns (bool){
 
         //check if campaign end
-        uint256 close_time= addDays(CollectionList[collectionId].start_time, CollectionList[collectionId].campaign_days);
+        uint256 close_time= addDays(BatchList[batchId].start_time, BatchList[batchId].campaign_days);
         if (block.timestamp > close_time){
             return true;
         }
 
         //check if sold out
-        if (CollectionItemList[collectionId].items.length >= CollectionList[collectionId].total_item){
+        if (BatchSlotList[batchId].slot.length >= BatchList[batchId].total_slot){
             return true;
         }
 
 
         //After 3 days purchased, buyer can view the token
-        uint256 viewable_time= addDays(CollectionItemList[collectionId].items[itemId].purchase_time, 3);
+        uint256 viewable_time= addDays(BatchSlotList[batchId].slot[slotId].purchase_time, 3);
         
         if (block.timestamp > viewable_time){
             return true;
@@ -185,32 +233,20 @@ contract NFTBox is ERC721URIStorage {
     }
 
 
-    function buy(uint256 collectionId, string memory img_url) public payable {
-        uint price = CollectionList[collectionId].price;
-
-        require(price > 0, 'This token is not for sale');
-
-        require(CollectionList[collectionId].isPublish, 'This Collection was not publish');
-
-        uint256 close_time= addDays(CollectionList[collectionId].start_time, CollectionList[collectionId].campaign_days);
-        require(block.timestamp < close_time, 'This Campaign Was Closed');
 
 
-        require(CollectionItemList[collectionId].items.length < CollectionList[collectionId].total_item, 
-            'This Collection Was Totally Sold Out');
 
-        address seller =  CollectionList[collectionId].owner;
-        payable(seller).transfer(price); // send the ETH to the seller
 
-        //give owner items
-        addCollectionItem(collectionId, img_url);
+    function addMyHistory(uint256 batchId, uint256 slotId) internal {
+        MyHistory[msg.sender].myItems.push(
+            MyItem(batchId, slotId, block.timestamp)
+        );
 
-        
     }
 
-
-
-
+    function getMyHistory() public view returns (MyBox memory){
+        return MyHistory[msg.sender];
+    }
 
 
 
