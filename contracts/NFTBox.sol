@@ -57,6 +57,9 @@ contract NFTBox is ERC721URIStorage {
     mapping(uint => Batch) BatchList;
     mapping(uint => SlotList) BatchSlotList;
 
+    //predefined random number for each batch
+    uint[] private batchRandomId;
+
 
     //Purchaser Purchased Slot
     mapping(address => MyBox) MyHistory;
@@ -81,6 +84,8 @@ contract NFTBox is ERC721URIStorage {
 
         BatchList[newBatchId] = Batch(name, desc, thumb_img, total_slot, content_json, 
             block.timestamp, block.timestamp, campaign_days, price, isPublish, msg.sender);
+
+        batchRandomId[newBatchId] = uint(keccak256(abi.encodePacked(newBatchId, block.timestamp, block.number-1))) % total_slot;
 
         return newBatchId;
     }
@@ -193,7 +198,7 @@ contract NFTBox is ERC721URIStorage {
         require(isViewable(batchId, slotId), 'No Found');
 
         if (BatchSlotList[batchId].slot[slotId].itemState == STATE_MASK){
-            uint randomItemId = uint(keccak256(abi.encodePacked(slotId, block.number-1))) % BatchList[batchId].total_slot;
+            uint randomItemId = (slotId + batchRandomId[batchId]) % BatchList[batchId].total_slot;
             
             BatchSlotList[batchId].slot[slotId].itemId = randomItemId;
             BatchSlotList[batchId].slot[slotId].itemState = STATE_UNMASK;
