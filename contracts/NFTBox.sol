@@ -24,17 +24,10 @@ contract NFTBox is ERC721URIStorage {
     }
 
 
-    //Each Batch has it own array of Slot - eg each batch has 1,111 slot
+    //Slot follow tokenID increment
     struct Slot{      
         address owner;  
         uint batchId;
-    }
-
-    int constant STATE_MASK = 0;
-    int constant STATE_UNMASK = 1;
-
-    struct SlotList{
-         Slot[] slot;
     }
 
 
@@ -83,12 +76,6 @@ contract NFTBox is ERC721URIStorage {
     
 
 
-    function getBatch(uint256 batchId ) public view returns (Batch memory) {
-        return BatchList[batchId];
-    }
-
-
-
     function getTotalBatch() public view returns (uint256) {
         return _batchIds.current();
     }
@@ -105,8 +92,6 @@ contract NFTBox is ERC721URIStorage {
 
         require(price > 0, 'This token is not for sale');
 
-
-
         require(BatchList[batchId].total_sold < BatchList[batchId].total_slot, 
             'This Batch Was Totally Sold Out');
 
@@ -115,8 +100,6 @@ contract NFTBox is ERC721URIStorage {
 
         //reserve a slot in the batch for buyer
         bookSlot(batchId);
-
-        
     }
 
     /**
@@ -187,9 +170,6 @@ contract NFTBox is ERC721URIStorage {
 
         return false;
     }
-
-
-
 
 
     uint256 constant SECONDS_PER_DAY = 24 * 60 * 60;
