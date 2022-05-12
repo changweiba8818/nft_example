@@ -8,29 +8,26 @@ import "hardhat/console.sol";
 contract NFTBox is ERC721URIStorage {
     using Counters for Counters.Counter;
     Counters.Counter private _batchIds;
+    Counters.Counter private _slotIds;
 
     //Batch - eg: 7 Batch
     struct Batch{
         string name;
-        string desc;
         string thumb_img;
         uint256 total_slot;
-        string content_json;//list of images in json array
-        uint create_time;//timestamp
+        uint256 total_sold;
+        string metadata_uri;//list of images
         uint start_time;//timestamp
-        uint campaign_days;//in days
         uint price;
-        bool isPublish;
         address owner;
+        uint sold_out_time;
     }
 
 
     //Each Batch has it own array of Slot - eg each batch has 1,111 slot
-    struct Slot{ 
-        uint purchase_time;       
+    struct Slot{      
         address owner;  
-        uint itemId;
-        int itemState;
+        uint batchId;
     }
 
     int constant STATE_MASK = 0;
@@ -41,28 +38,14 @@ contract NFTBox is ERC721URIStorage {
     }
 
 
-
-    //Buyer History/Purchased Token
-    struct MyItem{
-        uint256 batchId;
-        uint256 slotId;
-        uint purchase_time;
-    }
-
-    struct MyBox{
-        MyItem[] myItems;
-    }
-
     //Both Array > uint > _batchIds.increment
     mapping(uint => Batch) BatchList;
-    mapping(uint => SlotList) BatchSlotList;
+
+    mapping(uint => Slot) TokenSlotList;
 
     //predefined random number for each batch
     uint[] private batchRandomId;
 
-
-    //Purchaser Purchased Slot
-    mapping(address => MyBox) MyHistory;
 
     
     constructor() ERC721("NFTBox", "NFTBox") {
@@ -75,28 +58,29 @@ contract NFTBox is ERC721URIStorage {
     */
 
 
-    function addBatch(string memory name, string memory desc, string memory thumb_img, uint256 total_slot,  
-        string memory content_json,  uint campaign_days, uint price, bool isPublish) public returns (uint256) {
+    function addBatch(string memory name,  string memory thumb_img, uint256 total_slot,  
+        string memory metadata_uri, uint price) public returns (uint256) {
        
         _batchIds.increment();
 
         uint256 newBatchId = _batchIds.current();
 
-        BatchList[newBatchId] = Batch(name, desc, thumb_img, total_slot, content_json, 
-            block.timestamp, block.timestamp, campaign_days, price, isPublish, msg.sender);
+        BatchList[newBatchId] = Batch(name, thumb_img, total_slot, 0, metadata_uri, 
+            block.timestamp, price, msg.sender, 0);
 
-        batchRandomId[newBatchId] = uint(keccak256(abi.encodePacked(newBatchId, block.timestamp, block.number-1))) % total_slot;
-
+        batchRandomId[newBatchId] = 0;
         return newBatchId;
     }
 
 
-    function publish(uint256 batchId, uint campaign_days, bool isPublish) public {
-        BatchList[batchId].campaign_days = campaign_days;
-        BatchList[batchId].isPublish = isPublish;
+    function setBatchReveal(uint256 batchId) public {
+        require(isViewable(batchId), 'This batch has not fully sold out yet');
+         if ( batchRandomId[batchId] == 0){
+            batchRandomId[batchId] = (uint(keccak256(abi.encodePacked(batchId, block.timestamp, block.number-1))) 
+                    % BatchList[batchId].total_slot)+1;
+        }
     }
-
-
+    
 
 
     function getBatch(uint256 batchId ) public view returns (Batch memory) {
@@ -109,40 +93,8 @@ contract NFTBox is ERC721URIStorage {
         return _batchIds.current();
     }
 
-
-
-
-
-
-    function getCurrentBatchSlotIndex(uint256 batchId) public view returns (uint256) {  
-        return  BatchSlotList[batchId].slot.length;
-    }
-
-
-
-
-    
-
-
-
-    uint256 constant SECONDS_PER_DAY = 24 * 60 * 60;
-    function addDays(uint256 timestamp, uint256 _days)
-            internal
-            pure
-            returns (uint256 newTimestamp)
-    {
-        newTimestamp = timestamp + _days * SECONDS_PER_DAY;
-        require(newTimestamp >= timestamp);
-    }
-   
-
-
-   
-
-
-
     /**
-        When user buy, it actually was to book a slot in the batch 
+        When user buy, it actually was to book a slot 
         be4 they can actually know what will they get
 
         each slot with state still masked
@@ -153,13 +105,9 @@ contract NFTBox is ERC721URIStorage {
 
         require(price > 0, 'This token is not for sale');
 
-        require(BatchList[batchId].isPublish, 'This Batch was not publish');
-
-        uint256 close_time= addDays(BatchList[batchId].start_time, BatchList[batchId].campaign_days);
-        require(block.timestamp < close_time, 'This Campaign Was Closed');
 
 
-        require(BatchSlotList[batchId].slot.length < BatchList[batchId].total_slot, 
+        require(BatchList[batchId].total_sold < BatchList[batchId].total_slot, 
             'This Batch Was Totally Sold Out');
 
         address seller =  BatchList[batchId].owner;
@@ -176,11 +124,17 @@ contract NFTBox is ERC721URIStorage {
     */
 
     function bookSlot(uint256 batchId) internal {  
-        BatchSlotList[batchId].slot.push(
-               Slot(block.timestamp, msg.sender, 0, STATE_MASK) //itemId = -1 mean still unknown which item they will get
-        );
-        uint slotId = BatchSlotList[batchId].slot.length - 1;
-        addMyHistory(batchId, slotId);
+        BatchList[batchId].total_sold+=1;
+
+        if (BatchList[batchId].total_sold >= BatchList[batchId].total_slot){
+            BatchList[batchId].sold_out_time = block.timestamp;
+        }
+        _slotIds.increment();
+
+        uint256 newSlotId = _slotIds.current();
+        TokenSlotList[newSlotId] = Slot(msg.sender, batchId);
+
+        _mint(msg.sender, newSlotId);
         
     }
 
@@ -188,49 +142,48 @@ contract NFTBox is ERC721URIStorage {
 
      /**
         when retrieving Item, it will check isViewable, 
-        if yes then only will random pick the item to booked slot, and unmask the state
+        if yes then only will random pick the item to booked slot
     */
 
-    function getItemId(uint256 batchId, uint slotId) public payable returns (uint){
+    function tokenURI(uint256 _tokenID)
+        public
+        view
+        override
+        returns (string memory)
+    {
+        uint256 batchId =  TokenSlotList[_tokenID].batchId;
+         if (isViewable(batchId)){
+            uint randomItemId = (_tokenID + batchRandomId[batchId]) % BatchList[batchId].total_slot;
 
-        require(slotId < BatchSlotList[batchId].slot.length, 'No Found');
+            return string(abi.encodePacked(BatchList[batchId].metadata_uri,randomItemId));
+         }
 
-        require(isViewable(batchId, slotId), 'No Found');
-
-        if (BatchSlotList[batchId].slot[slotId].itemState == STATE_MASK){
-            uint randomItemId = (slotId + batchRandomId[batchId]) % BatchList[batchId].total_slot;
-            
-            BatchSlotList[batchId].slot[slotId].itemId = randomItemId;
-            BatchSlotList[batchId].slot[slotId].itemState = STATE_UNMASK;
-        }
-
-        return BatchSlotList[batchId].slot[slotId].itemId;
-          
-
+        return BatchList[batchId].thumb_img;
     }
 
 
 
-    function isViewable(uint256 batchId, uint slotId) internal view returns (bool){
 
-        //check if campaign end
-        uint256 close_time= addDays(BatchList[batchId].start_time, BatchList[batchId].campaign_days);
-        if (block.timestamp > close_time){
+    function isViewable(uint256 batchId) internal view returns (bool){
+        //check if has set random number for reveal
+        if (batchRandomId[batchId] != 0){
             return true;
         }
 
         //check if sold out
-        if (BatchSlotList[batchId].slot.length >= BatchList[batchId].total_slot){
+        if (BatchList[batchId].total_sold >= BatchList[batchId].total_slot){
             return true;
         }
 
 
-        //After 3 days purchased, buyer can view the token
-        uint256 viewable_time= addDays(BatchSlotList[batchId].slot[slotId].purchase_time, 3);
-        
-        if (block.timestamp > viewable_time){
-            return true;
+        //after batch was sold out, after 3 day then only can views
+        if (BatchList[batchId].sold_out_time != 0){
+            uint viewable_time= addDays(BatchList[batchId].sold_out_time, 3);
+            if (block.timestamp > viewable_time){
+                return true;
+            }
         }
+
 
         return false;
     }
@@ -239,18 +192,16 @@ contract NFTBox is ERC721URIStorage {
 
 
 
-
-    function addMyHistory(uint256 batchId, uint256 slotId) internal {
-        MyHistory[msg.sender].myItems.push(
-            MyItem(batchId, slotId, block.timestamp)
-        );
-
+    uint256 constant SECONDS_PER_DAY = 24 * 60 * 60;
+    function addDays(uint256 timestamp, uint256 _days)
+            internal
+            pure
+            returns (uint256 newTimestamp)
+    {
+        newTimestamp = timestamp + _days * SECONDS_PER_DAY;
+        require(newTimestamp >= timestamp);
     }
-
-    function getMyHistory() public view returns (MyBox memory){
-        return MyHistory[msg.sender];
-    }
-
+   
 
 
 }
