@@ -3,9 +3,10 @@ pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 
-contract NFTBox is ERC721URIStorage {
+contract NFTBox is ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _batchIds;
     Counters.Counter private _slotIds;
@@ -52,7 +53,7 @@ contract NFTBox is ERC721URIStorage {
 
 
     function addBatch(string memory name,  string memory thumb_img, uint256 total_slot,  
-        string memory metadata_uri, uint price) public returns (uint256) {
+        string memory metadata_uri, uint price) public onlyOwner returns (uint256) {
        
         _batchIds.increment();
 
@@ -66,7 +67,7 @@ contract NFTBox is ERC721URIStorage {
     }
 
 
-    function setBatchReveal(uint256 batchId) public {
+    function setBatchReveal(uint256 batchId) public onlyOwner {
         require(isViewable(batchId), 'This batch has not fully sold out yet');
          if ( batchRandomId[batchId] == 0){
             batchRandomId[batchId] = (uint(keccak256(abi.encodePacked(batchId, block.timestamp, block.number-1))) 
@@ -92,14 +93,17 @@ contract NFTBox is ERC721URIStorage {
 
         require(price > 0, 'This token is not for sale');
 
+        require(balanceOf(msg.sender) >= price, 'Insufficient Balance');
+
         require(BatchList[batchId].total_sold < BatchList[batchId].total_slot, 
             'This Batch Was Totally Sold Out');
 
-        address seller =  BatchList[batchId].owner;
-        payable(seller).transfer(price); // send the ETH to the seller
-
         //reserve a slot in the batch for buyer
         bookSlot(batchId);
+
+        address seller =  BatchList[batchId].owner;
+        payable(seller).transfer(price); // send the ETH to the seller
+        
     }
 
     /**
